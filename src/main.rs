@@ -12,6 +12,10 @@ use winit_input_helper::WinitInputHelper;
 use colorgrad;
 use std::time::Instant;
 
+use std::thread;
+use std::sync::{Mutex, Arc};
+// use std::sync::mpsc;
+
 const WIDTH: u32 = 1280;
 const HEIGHT: u32 = 720;
 
@@ -23,7 +27,7 @@ const SAMPLES_PER_PIXEL: usize = SAMPLES_PER_LINE * SAMPLES_PER_LINE;
 
 
 struct Fractal {
-    display_frame: Vec<Vec<u32>>,
+    display_frame: Vec<Vec<u16>>,
     cx: f64,
     cy: f64,
     zoom: f64,
@@ -126,10 +130,10 @@ impl Fractal {
 
     fn new() -> Self {
 
-        let mut empty_set:  Vec<Vec<u32>> = [].to_vec();
+        let mut empty_set:  Vec<Vec<u16>> = [].to_vec();
 
         for _w in 0..WIDTH{
-            let mut width_line: Vec<u32> = [].to_vec();
+            let mut width_line: Vec<u16> = [].to_vec();
             for _h in 0..HEIGHT{
                 width_line.push(0)
             }
@@ -154,28 +158,78 @@ impl Fractal {
     }
 
     fn update_fractal(&mut self) {
+        let mut return_vec: Vec<Vec<u16>> = [].to_vec();
+
+        for _w in 0..WIDTH{
+            let mut width_line: Vec<u16> = [].to_vec();
+            for _h in 0..HEIGHT{
+                width_line.push(0)
+            }
+            return_vec.push(width_line)
+        }
+
+        let safe = Arc::new(Mutex::new(return_vec));
+        // let (sender, reciver) = mpsc::channel();
+        let mut handles = vec![];
+
+        let zoom = self.zoom;
+        let offset_x = self.offset_x;
+        let offset_y = self.offset_y;
+
+        let cx = self.cx;
+        let cy = self.cy;
+
+        for x in 0..WIDTH{
+
+            // Before thread
+            let safe = Arc::clone(&safe);
+            // let sender = mpsc::Sender::clone(&sender);
+            let handle = thread::spawn(move|| {
+                for y in 0..HEIGHT{
+                    let mut iterations_per_pixel: u16 = 0;
+                    for i in 0..SAMPLES_PER_PIXEL{
+
+                        let mut zx: f64 = ((x as i32 + offset_x) as f64 + (i % SAMPLES_PER_LINE) as f64 / SAMPLES_PER_LINE as f64)/(WIDTH as f64/(2.0*zoom)) - zoom;
+                        let mut zy: f64 = ((y as i32 + offset_y) as f64 + (i / SAMPLES_PER_LINE) as f64 / SAMPLES_PER_LINE as f64)/(WIDTH as f64/(2.0*zoom)) - zoom/2.0;
+
+                        let mut iteration: u16 = 0;
+                        while zx * zx + zy * zy < R*R && iteration < MAX_ITERATION as u16 {
+                            let xtemp = zx * zx - zy * zy;
+                            zy = 2.0 * zx * zy  + cy;
+                            zx = xtemp + cx;
+        
+                            iteration += 1;
+                        }
+                        iterations_per_pixel += iteration;
+                    }
+                    // self.iterations += iterations_per_pixel as u64;
+                    // self.display_frame[x as usize][y as usize] = iterations_per_pixel/SAMPLES_PER_PIXEL as u32;
+
+                    // let mut test = *safe.lock().unwrap();
+                    // test.display_frame[x as usize][y as usize] = iterations_per_pixel/SAMPLES_PER_PIXEL as u32;
+                    // sender.send().unwrap();
+                    let mut test = safe.lock().unwrap();
+                    *test.get_mut(x as usize).unwrap().get_mut(y as usize).unwrap() = iterations_per_pixel / SAMPLES_PER_PIXEL as u16;
+                }
+            });
+            // After thread
+            handles.push(handle);
+        }
+        // Join threads
+        for i in handles {
+            i.join().unwrap();
+        }
+
+        let messages = safe.lock().unwrap();
         for x in 0..WIDTH{
             for y in 0..HEIGHT{
-                let mut iterations_per_pixel: u32 = 0;
-                for i in 0..SAMPLES_PER_PIXEL{
-
-                    let mut zx: f64 = ((x as i32 + self.offset_y) as f64 + (i % SAMPLES_PER_LINE) as f64 / SAMPLES_PER_LINE as f64)/(WIDTH as f64/(2.0*self.zoom)) - self.zoom;
-                    let mut zy: f64 = ((y as i32 + self.offset_y) as f64 + (i / SAMPLES_PER_LINE) as f64 / SAMPLES_PER_LINE as f64)/(WIDTH as f64/(2.0*self.zoom)) - self.zoom/2.0;
-
-                    let mut iteration: u32 = 0;
-                    while zx * zx + zy * zy < R*R && iteration < MAX_ITERATION {
-                        let xtemp = zx * zx - zy * zy;
-                        zy = 2.0 * zx * zy  + self.cy;
-                        zx = xtemp + self.cx;
-    
-                        iteration += 1;
-                    }
-                    iterations_per_pixel += iteration;
-                }
-                self.iterations += iterations_per_pixel as u64;
-                self.display_frame[x as usize][y as usize] = iterations_per_pixel/SAMPLES_PER_PIXEL as u32;
+                self.display_frame[x as usize][y as usize] = *messages.get(x as usize).unwrap().get(y as usize).unwrap() as u16;
+                self.iterations += (self.display_frame[x as usize][y as usize] * 16) as u64;
             }
         }
+
+
+
     }
 
     fn draw(&self, frame: &mut [u8]) {
