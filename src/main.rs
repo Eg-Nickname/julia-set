@@ -14,7 +14,6 @@ use std::time::Instant;
 
 use std::thread;
 use std::sync::{Mutex, Arc};
-// use std::sync::mpsc;
 
 const WIDTH: u32 = 1280;
 const HEIGHT: u32 = 720;
@@ -168,10 +167,6 @@ impl Fractal {
             return_vec.push(width_line)
         }
 
-        let safe = Arc::new(Mutex::new(return_vec));
-        // let (sender, reciver) = mpsc::channel();
-        let mut handles = vec![];
-
         let zoom = self.zoom;
         let offset_x = self.offset_x;
         let offset_y = self.offset_y;
@@ -179,11 +174,11 @@ impl Fractal {
         let cx = self.cx;
         let cy = self.cy;
 
-        for x in 0..WIDTH{
+        let safe = Arc::new(Mutex::new(return_vec));
+        let mut handles = vec![];
 
-            // Before thread
+        for x in 0..WIDTH{
             let safe = Arc::clone(&safe);
-            // let sender = mpsc::Sender::clone(&sender);
             let handle = thread::spawn(move|| {
                 for y in 0..HEIGHT{
                     let mut iterations_per_pixel: u16 = 0;
@@ -202,22 +197,16 @@ impl Fractal {
                         }
                         iterations_per_pixel += iteration;
                     }
-                    // self.iterations += iterations_per_pixel as u64;
-                    // self.display_frame[x as usize][y as usize] = iterations_per_pixel/SAMPLES_PER_PIXEL as u32;
 
-                    // let mut test = *safe.lock().unwrap();
-                    // test.display_frame[x as usize][y as usize] = iterations_per_pixel/SAMPLES_PER_PIXEL as u32;
-                    // sender.send().unwrap();
-                    let mut test = safe.lock().unwrap();
-                    *test.get_mut(x as usize).unwrap().get_mut(y as usize).unwrap() = iterations_per_pixel / SAMPLES_PER_PIXEL as u16;
+                    let mut temp_return_vec = safe.lock().unwrap();
+                    *temp_return_vec.get_mut(x as usize).unwrap().get_mut(y as usize).unwrap() = iterations_per_pixel / SAMPLES_PER_PIXEL as u16;
                 }
             });
-            // After thread
             handles.push(handle);
         }
-        // Join threads
-        for i in handles {
-            i.join().unwrap();
+
+        for handle in handles {
+            handle.join().unwrap();
         }
 
         let messages = safe.lock().unwrap();
@@ -227,9 +216,6 @@ impl Fractal {
                 self.iterations += (self.display_frame[x as usize][y as usize] * 16) as u64;
             }
         }
-
-
-
     }
 
     fn draw(&self, frame: &mut [u8]) {
