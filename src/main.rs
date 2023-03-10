@@ -10,6 +10,7 @@ use winit::window::WindowBuilder;
 use winit_input_helper::WinitInputHelper;
 
 use colorgrad;
+use std::time::Instant;
 
 const WIDTH: u32 = 1280;
 const HEIGHT: u32 = 720;
@@ -27,7 +28,8 @@ struct Fractal {
     cy: f64,
     zoom: f64,
     offset_x: i32,
-    offset_y: i32
+    offset_y: i32,
+    iterations: u64,
 }
 
 fn main() -> Result<(), Error> {
@@ -48,9 +50,14 @@ fn main() -> Result<(), Error> {
         let surface_texture = SurfaceTexture::new(window_size.width, window_size.height, &window);
         Pixels::new(WIDTH, HEIGHT, surface_texture)?
     };
+
     let mut fractal = Fractal::new();
     let mut paused: bool = false;
+    let mut loops: u64 = 0;
+
     event_loop.run(move |event, _, control_flow| {
+        let time = Instant::now();
+
         // Draw the current frame
         if let Event::RedrawRequested(_) = event {
             fractal.draw(pixels.get_frame_mut());
@@ -104,6 +111,11 @@ fn main() -> Result<(), Error> {
             }
             fractal.update_fractal();
 
+            loops += 1;
+
+            println!("Time per loop: {:?}, Avg iterations per loop: {}, Fractal iterations: {},", time.elapsed(), fractal.iterations/loops, fractal.iterations);
+
+
             window.request_redraw();
         }
     });
@@ -129,7 +141,8 @@ impl Fractal {
             cy: 0.156,
             zoom: 2.0,
             offset_x:0,
-            offset_y:0
+            offset_y:0,
+            iterations: 0
         }
     }
     fn zoom(&mut self){
@@ -143,7 +156,7 @@ impl Fractal {
     fn update_fractal(&mut self) {
         for x in 0..WIDTH{
             for y in 0..HEIGHT{
-                let mut avg_iterations_per_pixel: u32 = 0;
+                let mut iterations_per_pixel: u32 = 0;
                 for i in 0..SAMPLES_PER_PIXEL{
 
                     let mut zx: f64 = ((x as i32 + self.offset_y) as f64 + (i % SAMPLES_PER_LINE) as f64 / SAMPLES_PER_LINE as f64)/(WIDTH as f64/(2.0*self.zoom)) - self.zoom;
@@ -157,9 +170,10 @@ impl Fractal {
     
                         iteration += 1;
                     }
-                    avg_iterations_per_pixel += iteration
+                    iterations_per_pixel += iteration;
                 }
-                self.display_frame[x as usize][y as usize] = avg_iterations_per_pixel/SAMPLES_PER_PIXEL as u32;
+                self.iterations += iterations_per_pixel as u64;
+                self.display_frame[x as usize][y as usize] = iterations_per_pixel/SAMPLES_PER_PIXEL as u32;
             }
         }
     }
