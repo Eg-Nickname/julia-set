@@ -24,12 +24,11 @@ pub struct Fractal {
 
 impl Fractal {
     pub fn new() -> Self {
-        
-        // let display_vec: Box<[[u16; HEIGHT as usize]; WIDTH as usize]> = Box::new([[0; HEIGHT as usize]; WIDTH as usize]);
-        let mut display_vec = Vec::with_capacity(HEIGHT as usize);
+        // Vec realocates when len == capacity, so vector capacity needs to be 1 bigger
+        let mut display_vec = Vec::with_capacity(HEIGHT as usize + 1);
 
         for _w in 0..HEIGHT{
-            let mut width_line: Vec<u16> = Vec::with_capacity(WIDTH as usize);
+            let mut width_line: Vec<u16> = Vec::with_capacity(WIDTH as usize + 1);
             for _h in 0..WIDTH{
                 width_line.push(0)
             }
