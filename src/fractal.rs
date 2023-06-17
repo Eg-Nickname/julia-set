@@ -13,7 +13,7 @@ const SAMPLES_PER_PIXEL: usize = SAMPLES_PER_LINE * SAMPLES_PER_LINE;
 
 
 pub struct Fractal {
-    display_frame: Vec<Vec<u16>>,
+    display_frame: Arc<Mutex<Vec<Vec<u16>>>>,
     cx: f64,
     cy: f64,
     zoom: f64,
@@ -24,17 +24,20 @@ pub struct Fractal {
 
 impl Fractal {
     pub fn new() -> Self {
-        let mut empty_set:  Vec<Vec<u16>> = [].to_vec();
+        
+        // let display_vec: Box<[[u16; HEIGHT as usize]; WIDTH as usize]> = Box::new([[0; HEIGHT as usize]; WIDTH as usize]);
+        let mut display_vec = Vec::with_capacity(HEIGHT as usize);
 
-        for _w in 0..WIDTH{
-            let mut width_line: Vec<u16> = [].to_vec();
-            for _h in 0..HEIGHT{
+        for _w in 0..HEIGHT{
+            let mut width_line: Vec<u16> = Vec::with_capacity(WIDTH as usize);
+            for _h in 0..WIDTH{
                 width_line.push(0)
             }
-            empty_set.push(width_line)
+            display_vec.push(width_line)
         }
+
         Self {
-            display_frame: empty_set,
+            display_frame: Arc::new(Mutex::new(display_vec)),
             cx: -0.8,
             cy: 0.156,
             zoom: 2.0,
@@ -47,6 +50,7 @@ impl Fractal {
     pub fn get_iterations(&self) -> u64{
         self.iterations
     }
+
     pub fn zoom(&mut self){
         self.zoom = self.zoom * 0.85;
     }
@@ -74,16 +78,6 @@ impl Fractal {
     }
 
     pub fn update_fractal(&mut self) {
-        let mut return_vec: Vec<Vec<u16>> = [].to_vec();
-
-        for _w in 0..WIDTH{
-            let mut width_line: Vec<u16> = [].to_vec();
-            for _h in 0..HEIGHT{
-                width_line.push(0)
-            }
-            return_vec.push(width_line)
-        }
-
         let zoom = self.zoom;
         let offset_x = self.offset_x;
         let offset_y = self.offset_y;
@@ -91,13 +85,12 @@ impl Fractal {
         let cx = self.cx;
         let cy = self.cy;
 
-        let safe = Arc::new(Mutex::new(return_vec));
         let mut handles = vec![];
 
-        for x in 0..WIDTH{
-            let safe = Arc::clone(&safe);
+        for y in 0..HEIGHT{
+            let safe = Arc::clone(&self.display_frame);
             let handle = thread::spawn(move|| {
-                for y in 0..HEIGHT{
+                for x in 0..WIDTH{
                     let mut iterations_per_pixel: u16 = 0;
                     for i in 0..SAMPLES_PER_PIXEL{
 
@@ -116,7 +109,7 @@ impl Fractal {
                     }
 
                     let mut temp_return_vec = safe.lock().unwrap();
-                    *temp_return_vec.get_mut(x as usize).unwrap().get_mut(y as usize).unwrap() = iterations_per_pixel / SAMPLES_PER_PIXEL as u16;
+                    *temp_return_vec.get_mut(y as usize).unwrap().get_mut(x as usize).unwrap() = iterations_per_pixel / SAMPLES_PER_PIXEL as u16;
                 }
             });
             handles.push(handle);
@@ -125,24 +118,17 @@ impl Fractal {
         for handle in handles {
             handle.join().unwrap();
         }
-
-        let messages = safe.lock().unwrap();
-        for x in 0..WIDTH{
-            for y in 0..HEIGHT{
-                self.display_frame[x as usize][y as usize] = *messages.get(x as usize).unwrap().get(y as usize).unwrap() as u16;
-                self.iterations += (self.display_frame[x as usize][y as usize] * 16) as u64;
-            }
-        }
     }
 
     pub fn draw(&self, frame: &mut [u8]) {
         let grad = colorgrad::cubehelix_default();
+        let temp = self.display_frame.lock().unwrap();
 
         for (i, pixel) in frame.chunks_exact_mut(4).enumerate() {
             let x = i % WIDTH as usize;
             let y = i / WIDTH as usize;
 
-            let rgba: [u8; 4] = grad.at(self.display_frame[x][y] as f64 / MAX_ITERATION as f64).to_rgba8();
+            let rgba: [u8; 4] = grad.at(*temp.get(y).unwrap().get(x).unwrap() as f64 / MAX_ITERATION as f64).to_rgba8();
 
             pixel.copy_from_slice(&rgba);
         }
