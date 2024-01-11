@@ -2,7 +2,7 @@
 
 
 use log::error;
-use pixels::{Error, Pixels, SurfaceTexture};
+use pixels::{Pixels, SurfaceTexture};
 use winit::dpi::LogicalSize;
 use winit::event::{Event, VirtualKeyCode};
 use winit::event_loop::{ControlFlow, EventLoop};
@@ -17,10 +17,13 @@ const HEIGHT: u32 = 720;
 use std::time::Instant;
 
 
+pub mod fractals;
+use crate::fractals::Fractal;
 
-pub mod fractal;
+// Diffrent julia set fractal implementation
+mod threadmutexfractal;
 
-fn main() -> Result<(), Error> {
+fn main() -> Result<(), pixels::Error> {
     let event_loop = EventLoop::new();
     let mut input = WinitInputHelper::new();
     let window = {
@@ -39,7 +42,7 @@ fn main() -> Result<(), Error> {
         Pixels::new(WIDTH, HEIGHT, surface_texture)?
     };
 
-    let mut fractal = fractal::Fractal::new();
+    let mut fractal = threadmutexfractal::ThreadMutexFractal::new();
 
     let mut zoom: bool = false;
     let mut move_fractal: bool = false;
@@ -50,7 +53,7 @@ fn main() -> Result<(), Error> {
 
         // Draw the current frame
         if let Event::RedrawRequested(_) = event {
-            fractal.draw(pixels.get_frame_mut());
+            fractal.draw(pixels.frame_mut());
             if let Err(err) = pixels.render() {
                 error!("pixels.render() failed: {err}");
                 *control_flow = ControlFlow::Exit;
@@ -61,7 +64,7 @@ fn main() -> Result<(), Error> {
         // Handle input events
         if input.update(&event) {
             // Close events
-            if input.key_pressed(VirtualKeyCode::Escape) || input.quit() {
+            if input.key_pressed(VirtualKeyCode::Escape) || input.close_requested() {
                 *control_flow = ControlFlow::Exit;
                 return;
             }
@@ -75,25 +78,25 @@ fn main() -> Result<(), Error> {
                 }
             }
             // key inputs
-            if input.key_pressed(VirtualKeyCode::Up) || input.quit() {
+            if input.key_pressed(VirtualKeyCode::Up) {
                 fractal.change_offset(0, 10)
             }
-            if input.key_pressed(VirtualKeyCode::Down) || input.quit() {
+            if input.key_pressed(VirtualKeyCode::Down) {
                 fractal.change_offset(0, -10)
             }
 
-            if input.key_pressed(VirtualKeyCode::Left) || input.quit() {
+            if input.key_pressed(VirtualKeyCode::Left) {
                 fractal.change_offset(-10, 0)
             }
-            if input.key_pressed(VirtualKeyCode::Right) || input.quit() {
+            if input.key_pressed(VirtualKeyCode::Right) {
                 fractal.change_offset(10, 0)
             }
 
             // Pausing zooming
-            if input.key_pressed(VirtualKeyCode::Z) || input.quit() {
+            if input.key_pressed(VirtualKeyCode::Z) {
                 zoom = !zoom;
             }
-            if input.key_pressed(VirtualKeyCode::M) || input.quit() {
+            if input.key_pressed(VirtualKeyCode::M) {
                 move_fractal = !move_fractal;
             }
             
@@ -107,9 +110,8 @@ fn main() -> Result<(), Error> {
 
             fractal.update_fractal();
 
-            loops += 1;
-            println!("Time per loop: {:?}, Avg iterations per loop: {}, Fractal iterations: {},", time.elapsed(), fractal.get_iterations()/loops, fractal.get_iterations());
-
+            // Log time took to draw this fractal
+            println!("Time per loop: {:?}", time.elapsed());
 
             window.request_redraw();
         }

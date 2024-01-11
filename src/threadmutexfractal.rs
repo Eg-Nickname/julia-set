@@ -4,6 +4,7 @@ use std::thread;
 use std::sync::{Mutex, Arc};
 
 use crate::{WIDTH, HEIGHT};
+use crate::fractals::Fractal;
 
 const MAX_ITERATION: u32 = 500;
 const R: f64 = 2.0;
@@ -12,17 +13,16 @@ const SAMPLES_PER_LINE: usize = 2;
 const SAMPLES_PER_PIXEL: usize = SAMPLES_PER_LINE * SAMPLES_PER_LINE; 
 
 
-pub struct Fractal {
+pub struct ThreadMutexFractal {
     display_frame: Arc<Mutex<Vec<Vec<u16>>>>,
     cx: f64,
     cy: f64,
     zoom: f64,
     offset_x: i32,
-    offset_y: i32,
-    iterations: u64,
+    offset_y: i32
 }
 
-impl Fractal {
+impl ThreadMutexFractal {
     pub fn new() -> Self {
         // Vec realocates when len == capacity, so vector capacity needs to be 1 bigger
         let mut display_vec = Vec::with_capacity(HEIGHT as usize + 1);
@@ -42,19 +42,16 @@ impl Fractal {
             zoom: 2.0,
             offset_x:0,
             offset_y:0,
-            iterations: 0
         }
     }
+}
 
-    pub fn get_iterations(&self) -> u64{
-        self.iterations
-    }
-
-    pub fn zoom(&mut self){
+impl Fractal for ThreadMutexFractal{
+    fn zoom(&mut self){
         self.zoom = self.zoom * 0.85;
     }
 
-    pub fn move_fractal(&mut self){
+    fn move_fractal(&mut self){
         self.cx += 0.01;
         self.cy += -0.02;
 
@@ -71,12 +68,12 @@ impl Fractal {
         }
     }
 
-    pub fn change_offset(&mut self, off_x: i32, off_y: i32){
+    fn change_offset(&mut self, off_x: i32, off_y: i32){
         self.offset_x += off_x;
         self.offset_y += off_y;
     }
 
-    pub fn update_fractal(&mut self) {
+    fn update_fractal(&mut self) {
         let zoom = self.zoom;
         let offset_x = self.offset_x;
         let offset_y = self.offset_y;
@@ -119,7 +116,7 @@ impl Fractal {
         }
     }
 
-    pub fn draw(&self, frame: &mut [u8]) {
+    fn draw(&self, frame: &mut [u8]) {
         let grad = colorgrad::cubehelix_default();
         let temp = self.display_frame.lock().unwrap();
 
