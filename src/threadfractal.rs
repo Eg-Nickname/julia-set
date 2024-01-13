@@ -1,17 +1,19 @@
 use colorgrad;
 
 use std::thread;
-use std::sync::{Mutex, Arc};
+use std::sync::Arc;
+use std::cell::SyncUnsafeCell;
 
 use crate::fractals::{Fractal, BaseFractal};
 use crate::{WIDTH, HEIGHT, MAX_ITERATION, R, SAMPLES_PER_LINE, SAMPLES_PER_PIXEL};
 
-pub struct ThreadMutexFractal {
+
+pub struct ThreadFractal {
     pub base: BaseFractal,
-    display_frame: Arc<Mutex<Vec<Vec<u16>>>>,
+    display_frame: Arc<SyncUnsafeCell<Vec<Vec<u16>>>>,
 }
 
-impl ThreadMutexFractal {
+impl ThreadFractal {
     pub fn new() -> Self {
         // Vec realocates when len == capacity, so vector capacity needs to be 1 bigger
         let mut display_vec = Vec::with_capacity(HEIGHT as usize + 1);
@@ -26,12 +28,12 @@ impl ThreadMutexFractal {
 
         Self {
             base: BaseFractal::new(),
-            display_frame: Arc::new(Mutex::new(display_vec)),
+            display_frame: Arc::new(display_vec.into()),
         }
     }
 }
 
-impl Fractal for ThreadMutexFractal{
+impl Fractal for ThreadFractal{
     fn update_fractal(&mut self) {
         let zoom = self.base.zoom;
         let offset_x = self.base.offset_x;
@@ -62,9 +64,12 @@ impl Fractal for ThreadMutexFractal{
                         }
                         iterations_per_pixel += iteration;
                     }
-
-                    let mut temp_return_vec = safe.lock().unwrap();
-                    *temp_return_vec.get_mut(y as usize).unwrap().get_mut(x as usize).unwrap() = iterations_per_pixel / SAMPLES_PER_PIXEL as u16;
+                    unsafe {
+                        let diplay =  &mut *safe.get();
+                        diplay[y as usize][x as usize] = iterations_per_pixel / SAMPLES_PER_PIXEL as u16;
+                    }
+                    // *safe.get_mut(y as usize).unwrap().get_mut(x as usize).unwrap() = iterations_per_pixel / SAMPLES_PER_PIXEL as u16;
+                    // *safe = iterations_per_pixel / SAMPLES_PER_PIXEL as u16;
                 }
             });
             handles.push(handle);
@@ -77,15 +82,19 @@ impl Fractal for ThreadMutexFractal{
 
     fn draw(&self, frame: &mut [u8]) {
         let grad = colorgrad::cubehelix_default();
-        let temp = self.display_frame.lock().unwrap();
+        let safe =  Arc::clone(&self.display_frame);
 
         for (i, pixel) in frame.chunks_exact_mut(4).enumerate() {
             let x = i % WIDTH as usize;
             let y = i / WIDTH as usize;
+            
+            unsafe {
+                let diplay =  &*safe.get();
+                let rgba: [u8; 4] = grad.at(diplay[y as usize][x as usize] as f64 / MAX_ITERATION as f64).to_rgba8();
+                pixel.copy_from_slice(&rgba);
+            }
+            
 
-            let rgba: [u8; 4] = grad.at(*temp.get(y).unwrap().get(x).unwrap() as f64 / MAX_ITERATION as f64).to_rgba8();
-
-            pixel.copy_from_slice(&rgba);
         }
     }
 }

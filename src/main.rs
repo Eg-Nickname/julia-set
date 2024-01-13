@@ -1,4 +1,5 @@
 #![deny(clippy::all)]
+#![feature(sync_unsafe_cell)]
 
 
 use log::error;
@@ -14,6 +15,12 @@ use winit_input_helper::WinitInputHelper;
 const WIDTH: u32 = 1280;
 const HEIGHT: u32 = 720;
 
+const MAX_ITERATION: u32 = 500;
+const R: f64 = 2.0;
+
+const SAMPLES_PER_LINE: usize = 2;
+const SAMPLES_PER_PIXEL: usize = SAMPLES_PER_LINE * SAMPLES_PER_LINE; 
+
 use std::time::Instant;
 
 
@@ -22,6 +29,9 @@ use crate::fractals::Fractal;
 
 // Diffrent julia set fractal implementation
 mod threadmutexfractal;
+mod threadfractal;
+mod rayonfractal;
+
 
 fn main() -> Result<(), pixels::Error> {
     let event_loop = EventLoop::new();
@@ -42,11 +52,11 @@ fn main() -> Result<(), pixels::Error> {
         Pixels::new(WIDTH, HEIGHT, surface_texture)?
     };
 
-    let mut fractal = threadmutexfractal::ThreadMutexFractal::new();
+    // let mut fractal = threadmutexfractal::ThreadMutexFractal::new();
+    let mut fractal = rayonfractal::RayonFractal::new();
 
     let mut zoom: bool = false;
     let mut move_fractal: bool = false;
-    let mut loops: u64 = 0;
 
     event_loop.run(move |event, _, control_flow| {
         let time = Instant::now();
@@ -79,17 +89,17 @@ fn main() -> Result<(), pixels::Error> {
             }
             // key inputs
             if input.key_pressed(VirtualKeyCode::Up) {
-                fractal.change_offset(0, 10)
+                fractal.base.change_offset(0, 10)
             }
             if input.key_pressed(VirtualKeyCode::Down) {
-                fractal.change_offset(0, -10)
+                fractal.base.change_offset(0, -10)
             }
 
             if input.key_pressed(VirtualKeyCode::Left) {
-                fractal.change_offset(-10, 0)
+                fractal.base.change_offset(-10, 0)
             }
             if input.key_pressed(VirtualKeyCode::Right) {
-                fractal.change_offset(10, 0)
+                fractal.base.change_offset(10, 0)
             }
 
             // Pausing zooming
@@ -102,10 +112,10 @@ fn main() -> Result<(), pixels::Error> {
             
 
             if zoom{
-                fractal.zoom();
+                fractal.base.zoom();
             }
             if move_fractal{
-                fractal.move_fractal();
+                fractal.base.move_fractal();
             }
 
             fractal.update_fractal();
